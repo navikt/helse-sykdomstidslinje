@@ -4,11 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode
 import no.nav.helse.hendelse.*
 import no.nav.helse.sykdomstidslinje.Sykdomstidslinje
 import no.nav.helse.sykdomstidslinje.objectMapper
-import no.nav.helse.hendelse.Event
-import no.nav.helse.hendelse.Inntektsmelding
-import no.nav.helse.hendelse.Sykdomshendelse
-import no.nav.helse.hendelse.Sykepengesøknad
-import no.nav.helse.sykdomstidslinje.objectMapper
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import kotlin.reflect.KClass
@@ -20,7 +15,7 @@ abstract class Dag internal constructor(
     Sykdomstidslinje() {
     private val anyDag = null as KClass<Dag>?
     private val anyEvent = null as KClass<Sykdomshendelse>?
-    private val nySøknad = NySykepengesøknad::class
+    private val sykmelding = NySykepengesøknad::class
     private val sendtSøknad = SendtSykepengesøknad::class
     private val inntektsmelding = Inntektsmelding::class
 
@@ -29,7 +24,7 @@ abstract class Dag internal constructor(
     private val feriedag = Feriedag::class
     private val utenlandsdag = Utenlandsdag::class
     private val arbeidsdag = Arbeidsdag::class
-    private val fylldag = Fylldag::class
+    private val inferertArbeidsdag = InferertArbeidsdag::class
 
     internal val formatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
 
@@ -39,7 +34,11 @@ abstract class Dag internal constructor(
     internal open fun jsonRepresentation(): JsonDag {
         val hendelseType = (hendelse as Event).eventType()
         val hendelseJson = hendelse.toJson()
-        return JsonDag(dagType(), dagen, JsonHendelse(hendelseType.name, hendelseJson), erstatter.map { it.jsonRepresentation() })
+        return JsonDag(
+            dagType(),
+            dagen,
+            JsonHendelse(hendelseType.name, hendelseJson),
+            erstatter.map { it.jsonRepresentation() })
     }
 
     override fun toJson(): String = objectMapper.writeValueAsString(jsonRepresentation())
@@ -52,9 +51,10 @@ abstract class Dag internal constructor(
         hendelse
     )
 
-    internal fun erstatter(vararg dager: Dag) {
+    internal fun erstatter(vararg dager: Dag): Dag {
         dager.filterNot { it is Nulldag }
             .forEach { erstatter.addAll(it.erstatter + it) }
+        return this
     }
 
     fun dagerErstattet(): List<Dag> = erstatter
@@ -63,27 +63,61 @@ abstract class Dag internal constructor(
         val helper = Helper(this, other)
 
         return when {
-            helper.doesMatchBidirectional(sykedag, nySøknad, feriedag, inntektsmelding) -> Ubestemtdag(this, other)
-            helper.doesMatchBidirectional(sykedag, sendtSøknad, feriedag, inntektsmelding) -> Ubestemtdag(this, other)
-            helper.doesMatchBidirectional(arbeidsdag, inntektsmelding, sykedag, sendtSøknad) -> Ubestemtdag(this, other)
-            helper.doesMatchBidirectional(sykedag, sendtSøknad, arbeidsdag, sendtSøknad) -> Ubestemtdag(this, other)
+            //
+            helper.doesMatch(sykedag, sykmelding, feriedag, inntektsmelding) -> Ubestemtdag(this, other)
+            helper.doesMatch(feriedag, inntektsmelding, sykedag, sykmelding) -> Ubestemtdag(this, other)
 
+            // Hvis ikke arbeidsgiver og sykmeldt er enig om du var syk eller hadde ferie kan vi ikke bestemme oss
+            helper.doesMatch(sykedag, sendtSøknad, feriedag, inntektsmelding) -> Ubestemtdag(this, other)
+            helper.doesMatch(feriedag, inntektsmelding, sykedag, sendtSøknad) -> Ubestemtdag(this, other)
+
+            // Hvis ikke arbeidsgiver og sykmeldt er enig om du var syk eller på jobb kan vi ikke bestemme oss
+            helper.doesMatch(arbeidsdag, inntektsmelding, sykedag, sendtSøknad) -> Ubestemtdag(this, other)
+            helper.doesMatch(sykedag, sendtSøknad, arbeidsdag, inntektsmelding) -> Ubestemtdag(this, other)
+
+            // TODO Knut skal vi ha dette?
+            //
+            //  Oppgitt feriedag vinner over oppgitt arbeidsdag
+            //   helper.doesMatch(arbeidsdag, anyEvent, sykedag, anyEvent) -> this.erstatter(other)
+            //   helper.doesMatch(sykedag, anyEvent, arbeidsdag, anyEvent) -> other.erstatter(this)
+
+            // Oppgitt arbeidsdag vinner over sykedag
+            helper.doesMatch(arbeidsdag, anyEvent, sykedag, anyEvent) -> this.erstatter(other)
+            helper.doesMatch(sykedag, anyEvent, arbeidsdag, anyEvent) -> other.erstatter(this)
+
+            // Nulldag taper mot alle dager
             helper.doesMatch(nulldag, anyEvent, anyDag, anyEvent) -> other
             helper.doesMatch(anyDag, anyEvent, nulldag, anyEvent) -> this
-            helper.doesMatch(sykedag, anyEvent, sykedag, anyEvent) -> this.sisteDag(other)
+
+            // Ferie vinner over sykdom
             helper.doesMatch(feriedag, anyEvent, sykedag, anyEvent) -> this.also { this.erstatter(other) }
             helper.doesMatch(sykedag, anyEvent, feriedag, anyEvent) -> other.also { other.erstatter(this) }
+
+            // Ferie vinner over utenlandsdag
             helper.doesMatch(feriedag, anyEvent, utenlandsdag, anyEvent) -> this.also { this.erstatter(other) }
             helper.doesMatch(utenlandsdag, anyEvent, feriedag, anyEvent) -> other.also { other.erstatter(this) }
+
+            // Arbeidsdag vinner over sykedag
             helper.doesMatch(arbeidsdag, anyEvent, sykedag, anyEvent) -> this.also { this.erstatter(other) }
             helper.doesMatch(sykedag, anyEvent, arbeidsdag, anyEvent) -> other.also { other.erstatter(this) }
-            helper.doesMatch(arbeidsdag, anyEvent, arbeidsdag, anyEvent) -> this.sisteDag(other)
 
-            helper.doesMatch(fylldag, anyEvent, arbeidsdag, anyEvent) -> other
-            helper.doesMatch(arbeidsdag, anyEvent, fylldag, anyEvent) -> this
-            helper.doesMatch(fylldag, anyEvent, sykedag, anyEvent) -> other
-            helper.doesMatch(sykedag, anyEvent, fylldag, anyEvent) -> this
-            helper.doesMatch(fylldag, anyEvent, fylldag, anyEvent) -> this.sisteDag(other)
+            // Den siste av to like dager vinner
+            helper.doesMatch(sykedag, anyEvent, sykedag, anyEvent) -> this.sisteDag(other)
+            helper.doesMatch(arbeidsdag, anyEvent, arbeidsdag, anyEvent) -> this.sisteDag(other)
+            helper.doesMatch(inferertArbeidsdag, anyEvent, inferertArbeidsdag, anyEvent) -> this.sisteDag(other)
+
+            // Infererte arbeidsdager skal tape mot arbeidsdager fordi oppgitt informasjon trumfer antatt informasjon
+            helper.doesMatch(inferertArbeidsdag, anyEvent, arbeidsdag, anyEvent) -> other
+            helper.doesMatch(arbeidsdag, anyEvent, inferertArbeidsdag, anyEvent) -> this
+
+            // Infererte arbeidsdager skal tape mot sykedager fordi oppgitt informasjon trumfer antatt informasjon
+            helper.doesMatch(inferertArbeidsdag, anyEvent, sykedag, anyEvent) -> other
+            helper.doesMatch(sykedag, anyEvent, inferertArbeidsdag, anyEvent) -> this
+
+            // Infererte arbeidsdager skal tape mot feriedager fordi oppgitt informasjon trumfer antatt informasjon
+            helper.doesMatch(inferertArbeidsdag, anyEvent, feriedag, anyEvent) -> other
+            helper.doesMatch(feriedag, anyEvent, inferertArbeidsdag, anyEvent) -> this
+
             else -> Ubestemtdag(this, other)
         }
     }

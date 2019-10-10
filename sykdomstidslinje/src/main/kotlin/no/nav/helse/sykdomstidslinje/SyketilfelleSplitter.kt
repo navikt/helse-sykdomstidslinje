@@ -13,6 +13,12 @@ internal class SyketilfelleSplitter : SykdomstidslinjeVisitor {
         state.visitArbeidsdag(arbeidsdag)
     }
 
+    override fun visitInferertAbeidsdag(inferertArbeidsdag: InferertArbeidsdag) {
+        syketilfelle.add(inferertArbeidsdag)
+        state.visitInferertArbeidsdag(inferertArbeidsdag )
+    }
+
+
     override fun visitFeriedag(feriedag: Feriedag) {
         syketilfelle.add(feriedag)
         state.visitFeriedag(feriedag)
@@ -45,6 +51,7 @@ internal class SyketilfelleSplitter : SykdomstidslinjeVisitor {
 
     internal interface SykedagerTellerTilstand {
         fun visitArbeidsdag(dag: Arbeidsdag) {}
+        fun visitInferertArbeidsdag(dag: InferertArbeidsdag) {}
         fun visitSykedag(dag: Sykedag) {}
         fun visitHelgedag(dag: Helgedag) {}
         fun visitSykHelgedag(dag: SykHelgedag) {}
@@ -75,6 +82,11 @@ internal class SyketilfelleSplitter : SykdomstidslinjeVisitor {
         override fun visitArbeidsdag(dag: Arbeidsdag) {
             state = TellerIkkeSykedager()
             state.visitArbeidsdag(dag)
+        }
+
+        override fun visitInferertArbeidsdag(dag: InferertArbeidsdag) {
+            state = TellerIkkeSykedager()
+            state.visitInferertArbeidsdag(dag)
         }
 
         override fun visitHelgedag(dag: Helgedag) {

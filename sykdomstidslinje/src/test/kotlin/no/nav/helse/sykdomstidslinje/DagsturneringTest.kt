@@ -33,6 +33,7 @@ class DagsturneringTest {
         val outcomes = readTestcases()
         val resultat = outcomes
             .map(TestCase::toResult)
+            .filterNot { it.passed }
             .onEach { println(it.message) }
 
         assertEquals(0, resultat.filterNot { it.passed }.size)
@@ -70,7 +71,7 @@ class DagsturneringTest {
             } else {
                 Resultat(
                     false,
-                    "${this.left()} + ${this.right()} ble $vinner og ikke ${this.resultFor().simpleName} som forventet"
+                    "${columnEventName} + ${rowEventName} ble $vinner og ikke ${this.resultFor().simpleName} som forventet"
                 )
             }
         }
@@ -87,7 +88,7 @@ class DagsturneringTest {
         }
 
         fun nameToEventType(name: String, dato: LocalDate): Dag = when (name) {
-            "WD-I" -> Fylldag(dato, sendtSøknad)
+            "WD-I" -> Sykdomstidslinje.ikkeSykedag(dato, sendtSøknad)
             "WD-A" -> Sykdomstidslinje.ikkeSykedag(dato, sendtSøknad)
             "WD-IM" -> Sykdomstidslinje.ikkeSykedag(dato, inntektsmelding)
             "S" -> Sykdomstidslinje.sykedager(dato, nySøknad)
@@ -126,7 +127,7 @@ class DagsturneringTest {
         }
 
         fun resultFor() = when (resultEventName.toUpperCase()) {
-            "WD-I" -> Fylldag::class
+            "WD-I" -> Arbeidsdag::class
             "WD" -> Arbeidsdag::class
             "S" -> Sykedag::class
             "L" -> latest()::class

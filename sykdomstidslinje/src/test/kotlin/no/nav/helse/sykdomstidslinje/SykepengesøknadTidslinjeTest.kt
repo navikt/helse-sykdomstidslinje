@@ -35,7 +35,7 @@ class SykepengesøknadTidslinjeTest {
         assertEquals(SykHelgedag::class, syketilfeller.dagForDato(egenmeldingTom)::class)
     }
 
-    @Disabled
+    @Test
     fun `Tidslinjen får ferien fra søknaden`(){
         val syketilfeller = sendtSøknad().sykdomstidslinje().syketilfeller()
 

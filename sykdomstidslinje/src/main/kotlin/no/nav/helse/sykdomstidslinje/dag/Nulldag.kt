@@ -11,7 +11,7 @@ internal class Nulldag internal constructor(gjelder: LocalDate, hendelse: Sykdom
 
     override fun antallSykedagerHvorViIkkeTellerMedHelg(): Int = 0
 
-    override fun tilDag() = ikkeSykedag(dagen, hendelse)
+    override fun tilDag() =  InferertArbeidsdag(dagen,hendelse)//ikkeSykedag(dagen, hendelse)
 
     override fun toString() = formatter.format(dagen) + "\tNulldag"
 

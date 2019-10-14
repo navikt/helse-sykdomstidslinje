@@ -45,6 +45,10 @@ abstract class Sykdomstidslinje {
     fun overlapperMed(other: Sykdomstidslinje) =
         this.antallDagerMellom(other) < 0
 
+    fun erIKonflikt(other: Sykdomstidslinje) =
+        //Check six months rule
+        this.antallDagerMellom(other) < 6 * 30
+
     private fun førsteStartdato(other: Sykdomstidslinje) =
         if (this.startdato().isBefore(other.startdato())) this.startdato() else other.startdato()
 

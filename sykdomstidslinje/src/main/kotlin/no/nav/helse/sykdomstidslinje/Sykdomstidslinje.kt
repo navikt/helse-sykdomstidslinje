@@ -8,6 +8,7 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import no.nav.helse.hendelse.DokumentMottattHendelse
 import no.nav.helse.sykdomstidslinje.dag.*
 import no.nav.helse.utbetalingstidslinje.Utbetalingstidslinje
+import java.math.BigDecimal
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
@@ -105,6 +106,8 @@ abstract class Sykdomstidslinje {
 
         return visitor.results()
     }
+
+    fun utbetalingstidslinjer(dagsats: BigDecimal) = syketilfeller().map { Utbetalingstidslinje(it, dagsats) }
 
     companion object {
         fun sykedag(gjelder: LocalDate, hendelse: DokumentMottattHendelse) =

@@ -17,6 +17,7 @@ import no.nav.helse.hendelser.saksbehandling.ManuellSaksbehandlingHendelse
 import no.nav.helse.hendelser.sykepengehistorikk.SykepengehistorikkHendelse
 import no.nav.helse.hendelser.søknad.NySøknadHendelse
 import no.nav.helse.hendelser.søknad.SendtSøknadHendelse
+import no.nav.helse.hendelser.vilkårsprøving.VilkårsprøvingHendelse
 import no.nav.helse.sykdomstidslinje.Sykdomstidslinje
 import no.nav.helse.sykdomstidslinje.SykdomstidslinjeHendelse
 import no.nav.helse.sykdomstidslinje.Utbetalingsberegning
@@ -91,6 +92,10 @@ class Sakskompleks(
         if (id.toString() == sykepengehistorikkHendelse.sakskompleksId()) tilstand.håndterSykepengehistorikk(this, sykepengehistorikkHendelse)
     }
 
+    internal fun håndterVilkårsprøving(vilkårsprøvingHendelse: VilkårsprøvingHendelse) {
+        if (id.toString() == vilkårsprøvingHendelse.sakskompleksId()) tilstand.håndterVilkårsprøving(this, vilkårsprøvingHendelse)
+    }
+
     internal fun håndterManuellSaksbehandling(manuellSaksbehandlingHendelse: ManuellSaksbehandlingHendelse) {
         if (id.toString() == manuellSaksbehandlingHendelse.sakskompleksId()) tilstand.håndterManuellSaksbehandling(this, manuellSaksbehandlingHendelse)
     }
@@ -139,7 +144,8 @@ class Sakskompleks(
         KOMPLETT_SYKDOMSTIDSLINJE,
         TIL_GODKJENNING,
         TIL_UTBETALING,
-        TIL_INFOTRYGD
+        TIL_INFOTRYGD,
+        SYKEPENGEHISTORIKK_MOTTATT
     }
 
     // Gang of four State pattern
@@ -161,6 +167,9 @@ class Sakskompleks(
         }
 
         fun håndterSykepengehistorikk(sakskompleks: Sakskompleks, sykepengehistorikkHendelse: SykepengehistorikkHendelse) {
+        }
+
+        fun håndterVilkårsprøving(sakskompleks: Sakskompleks, vilkårsprøvingHendelse: VilkårsprøvingHendelse){
         }
 
         fun håndterManuellSaksbehandling(sakskompleks: Sakskompleks, manuellSaksbehandlingHendelse: ManuellSaksbehandlingHendelse) {
@@ -250,7 +259,7 @@ class Sakskompleks(
                 return sakskompleks.setTilstand(sykepengehistorikkHendelse, TilInfotrygdTilstand)
             }
 
-            sakskompleks.setTilstand(sykepengehistorikkHendelse, TilGodkjenningTilstand) {
+            sakskompleks.setTilstand(sykepengehistorikkHendelse, SykepengehistorikkMottattTilstand) {
                 sakskompleks.maksdato = utbetalingsberegning.maksdato
                 sakskompleks.utbetalingslinjer = utbetalingsberegning.utbetalingslinjer
             }
@@ -266,6 +275,14 @@ class Sakskompleks(
             }
 
             return inntektsmelding.endringIRefusjoner().all { it > sisteUtbetalingsdag }
+        }
+    }
+
+    private object SykepengehistorikkMottattTilstand : Sakskomplekstilstand {
+        override val type = SYKEPENGEHISTORIKK_MOTTATT
+
+        override fun håndterVilkårsprøving(sakskompleks: Sakskompleks, vilkårsprøvingHendelse: VilkårsprøvingHendelse) {
+            sakskompleks.setTilstand(vilkårsprøvingHendelse, TilGodkjenningTilstand)
         }
     }
 
@@ -372,6 +389,7 @@ class Sakskompleks(
             TIL_GODKJENNING -> TilGodkjenningTilstand
             TIL_UTBETALING -> TilUtbetalingTilstand
             TIL_INFOTRYGD -> TilInfotrygdTilstand
+            SYKEPENGEHISTORIKK_MOTTATT -> SykepengehistorikkMottattTilstand
         }
 
         private val objectMapper = jacksonObjectMapper()

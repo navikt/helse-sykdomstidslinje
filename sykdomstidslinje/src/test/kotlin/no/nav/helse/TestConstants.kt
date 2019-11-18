@@ -14,6 +14,7 @@ import no.nav.helse.hendelser.sykepengehistorikk.SykepengehistorikkHendelse
 import no.nav.helse.hendelser.søknad.NySøknadHendelse
 import no.nav.helse.hendelser.søknad.SendtSøknadHendelse
 import no.nav.helse.hendelser.søknad.Sykepengesøknad
+import no.nav.helse.hendelser.vilkårsprøving.VilkårsprøvingHendelse
 import no.nav.helse.sykdomstidslinje.Sykdomstidslinje
 import no.nav.inntektsmeldingkontrakt.*
 import no.nav.syfo.kafka.sykepengesoknad.dto.*
@@ -270,6 +271,8 @@ internal object TestConstants {
             aktørId = aktørId,
             sakskompleksId = sakskompleksId
     ))
+
+    fun vilkårsprøvingHendelse(sakskompleksId: UUID) = VilkårsprøvingHendelse(sakskompleksID = sakskompleksId.toString())
 
     fun manuellSaksbehandlingLøsning(organisasjonsnummer: String = "123546564",
                                      aktørId: String = "1",

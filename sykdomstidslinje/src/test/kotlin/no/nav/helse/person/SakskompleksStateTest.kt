@@ -325,6 +325,26 @@ internal class SakskompleksStateTest : SakskompleksObserver {
     }
 
     @Test
+    fun `motta vilkårsprøving når vi er i komplett tilstand`() {
+        val periodeFom = 1.juli
+        val periodeTom = 20.juli
+
+        val nySøknadHendelse = nySøknadHendelse(søknadsperioder = listOf(SoknadsperiodeDTO(fom = periodeFom, tom = periodeTom)), egenmeldinger = emptyList(), fravær = emptyList())
+        val sendtSøknadHendelse = sendtSøknadHendelse(søknadsperioder = listOf(SoknadsperiodeDTO(fom = periodeFom, tom = periodeTom)), egenmeldinger = emptyList(), fravær = emptyList())
+        val inntektsmeldingHendelse = inntektsmeldingHendelse(arbeidsgiverperioder = listOf(Periode(periodeFom, periodeFom.plusDays(16))))
+
+        val sakskompleks = beInKomplettTidslinje(
+            nySøknadHendelse = nySøknadHendelse,
+            sendtSøknadHendelse = sendtSøknadHendelse,
+            inntektsmeldingHendelse = inntektsmeldingHendelse)
+
+        sakskompleks.håndterVilkårsprøving(vilkårsprøvingHendelse(sakskompleksId))
+
+        assertEquals(KOMPLETT_SYKDOMSTIDSLINJE, lastStateEvent.previousState)
+        assertEquals(VILKÅRSPRØVING_MOTTATT, lastStateEvent.currentState)
+    }
+
+    @Test
     fun `motta vilkårsprøving når vi har mottatt sykepengehistorikk`() {
         val periodeFom = 1.juli
         val periodeTom = 20.juli
@@ -340,9 +360,38 @@ internal class SakskompleksStateTest : SakskompleksObserver {
             inntektsmeldingHendelse = inntektsmeldingHendelse,
             sykepengehistorikkHendelse = sykepengehistorikkHendelse)
 
-        sakskompleks.håndterVilkårsprøving(VilkårsprøvingHendelse(sakskompleksId.toString()))
+        sakskompleks.håndterVilkårsprøving(vilkårsprøvingHendelse(sakskompleksId))
 
         assertEquals(SYKEPENGEHISTORIKK_MOTTATT, lastStateEvent.previousState)
+        assertEquals(TIL_GODKJENNING, lastStateEvent.currentState)
+    }
+
+    @Test
+    fun `motta sykepengehistorikk når vi har mottatt vilkårsprøving`() {
+        val periodeFom = 1.juli
+        val periodeTom = 20.juli
+
+        val nySøknadHendelse = nySøknadHendelse(søknadsperioder = listOf(SoknadsperiodeDTO(fom = periodeFom, tom = periodeTom)), egenmeldinger = emptyList(), fravær = emptyList())
+        val sendtSøknadHendelse = sendtSøknadHendelse(søknadsperioder = listOf(SoknadsperiodeDTO(fom = periodeFom, tom = periodeTom)), egenmeldinger = emptyList(), fravær = emptyList())
+        val inntektsmeldingHendelse = inntektsmeldingHendelse(arbeidsgiverperioder = listOf(Periode(periodeFom, periodeFom.plusDays(16))))
+        val vilkårsprøvingHendelse = vilkårsprøvingHendelse(sakskompleksId)
+        val sykepengehistorikkHendelse = sykepengehistorikkHendelse(sisteHistoriskeSykedag = null, sakskompleksId = sakskompleksId)
+
+        val sakskompleks = beInVilkårsprøvingMottatt(
+            nySøknadHendelse = nySøknadHendelse,
+            sendtSøknadHendelse = sendtSøknadHendelse,
+            inntektsmeldingHendelse = inntektsmeldingHendelse,
+            vilkårsprøvingHendelse = vilkårsprøvingHendelse)
+
+        sakskompleks.håndterSykepengehistorikk(sykepengehistorikkHendelse)
+
+        assertNotNull(sakskompleks.jsonRepresentation().utbetalingslinjer)
+        assertEquals(1.juli.plusDays(361), sakskompleks.jsonRepresentation().maksdato)
+        assertEquals(31, sakskompleks.jsonRepresentation().utbetalingslinjer?.get(0)?.get("dagsats")?.intValue())
+        assertEquals(17.juli, sakskompleks.jsonRepresentation().utbetalingslinjer?.get(0)?.get("fom").safelyUnwrapDate())
+        assertEquals(19.juli, sakskompleks.jsonRepresentation().utbetalingslinjer?.get(0)?.get("tom").safelyUnwrapDate())
+
+        assertEquals(VILKÅRSPRØVING_MOTTATT, lastStateEvent.previousState)
         assertEquals(TIL_GODKJENNING, lastStateEvent.currentState)
     }
 
@@ -645,6 +694,14 @@ internal class SakskompleksStateTest : SakskompleksObserver {
                                               nySøknadHendelse: NySøknadHendelse = nySøknadHendelse()) =
         beInKomplettTidslinje(sendtSøknadHendelse, inntektsmeldingHendelse, nySøknadHendelse).apply {
             håndterSykepengehistorikk(sykepengehistorikkHendelse)
+        }
+
+    private fun beInVilkårsprøvingMottatt(vilkårsprøvingHendelse: VilkårsprøvingHendelse = vilkårsprøvingHendelse(sakskompleksId),
+                                          sendtSøknadHendelse: SendtSøknadHendelse = sendtSøknadHendelse(),
+                                          inntektsmeldingHendelse: InntektsmeldingHendelse = inntektsmeldingHendelse(),
+                                          nySøknadHendelse: NySøknadHendelse = nySøknadHendelse()) =
+        beInKomplettTidslinje(sendtSøknadHendelse, inntektsmeldingHendelse, nySøknadHendelse).apply {
+            håndterVilkårsprøving(vilkårsprøvingHendelse)
         }
 
     private fun beInTilGodkjenning(vilkårsprøvingHendelse: VilkårsprøvingHendelse = vilkårsprøvingHendelse(sakskompleksId),

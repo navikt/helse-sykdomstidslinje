@@ -136,16 +136,57 @@ class Sakskompleks(
         }
     }
 
+    private fun helePeriodenSkalBetalesAvArbeidsgiver(utbetalingsberegning: Utbetalingsberegning): Boolean {
+        val inntektsmelding = inntektsmeldingHendelse() ?: return false
+        val sisteUtbetalingsdag = utbetalingsberegning.utbetalingslinjer.lastOrNull()?.tom ?: return true
+
+        val opphørsdato = inntektsmelding.refusjon().opphoersdato
+        if (opphørsdato != null && opphørsdato <= sisteUtbetalingsdag) {
+            return false
+        }
+
+        return inntektsmelding.endringIRefusjoner().all { it > sisteUtbetalingsdag }
+    }
+
+    private fun beregnUtbetalingOgSettTilstand(sykepengehistorikkHendelse: SykepengehistorikkHendelse, nyTilstand: Sakskomplekstilstand) {
+        val seksMåneder = 180
+
+        val tidslinje = sykdomstidslinje
+            ?: return setTilstand(sykepengehistorikkHendelse, TilInfotrygdTilstand)
+
+        val sisteFraværsdag = sykepengehistorikkHendelse.sisteFraværsdag()
+
+        if (sisteFraværsdag != null && (sisteFraværsdag > tidslinje.startdato() || sisteFraværsdag.datesUntil(tidslinje.startdato()).count() <= seksMåneder)) {
+            return setTilstand(sykepengehistorikkHendelse, TilInfotrygdTilstand)
+        }
+
+        val utbetalingsberegning = try {
+            tidslinje.utbetalingsberegning(dagsats())
+        } catch (ie: IllegalArgumentException) {
+            return setTilstand(sykepengehistorikkHendelse, TilInfotrygdTilstand)
+        }
+
+        if (!helePeriodenSkalBetalesAvArbeidsgiver(utbetalingsberegning)) {
+            return setTilstand(sykepengehistorikkHendelse, TilInfotrygdTilstand)
+        }
+
+        setTilstand(sykepengehistorikkHendelse, nyTilstand) {
+            maksdato = utbetalingsberegning.maksdato
+            utbetalingslinjer = utbetalingsberegning.utbetalingslinjer
+        }
+    }
+
     enum class TilstandType {
         START,
         NY_SØKNAD_MOTTATT,
         SENDT_SØKNAD_MOTTATT,
         INNTEKTSMELDING_MOTTATT,
         KOMPLETT_SYKDOMSTIDSLINJE,
+        SYKEPENGEHISTORIKK_MOTTATT,
+        VILKÅRSPRØVING_MOTTATT,
         TIL_GODKJENNING,
         TIL_UTBETALING,
         TIL_INFOTRYGD,
-        SYKEPENGEHISTORIKK_MOTTATT
     }
 
     // Gang of four State pattern
@@ -231,8 +272,6 @@ class Sakskompleks(
 
         override val type = KOMPLETT_SYKDOMSTIDSLINJE
 
-        private const val seksMåneder = 180
-
         override fun entering(sakskompleks: Sakskompleks) {
             sakskompleks.emitTrengerLøsning(BehovsTyper.Sykepengehistorikk, mapOf<String, Any>(
                     "tom" to sakskompleks.sykdomstidslinje!!.startdato().minusDays(1)
@@ -240,41 +279,11 @@ class Sakskompleks(
         }
 
         override fun håndterSykepengehistorikk(sakskompleks: Sakskompleks, sykepengehistorikkHendelse: SykepengehistorikkHendelse) {
-            val tidslinje = sakskompleks.sykdomstidslinje
-                    ?: return sakskompleks.setTilstand(sykepengehistorikkHendelse, TilInfotrygdTilstand)
-
-            val sisteFraværsdag = sykepengehistorikkHendelse.sisteFraværsdag()
-
-            if (sisteFraværsdag != null && (sisteFraværsdag > tidslinje.startdato() || sisteFraværsdag.datesUntil(tidslinje.startdato()).count() <= seksMåneder)) {
-                return sakskompleks.setTilstand(sykepengehistorikkHendelse, TilInfotrygdTilstand)
-            }
-
-            val utbetalingsberegning = try {
-                tidslinje.utbetalingsberegning(sakskompleks.dagsats())
-            } catch (ie: IllegalArgumentException) {
-                return sakskompleks.setTilstand(sykepengehistorikkHendelse, TilInfotrygdTilstand)
-            }
-
-            if (!sakskompleks.helePeriodenSkalBetalesAvArbeidsgiver(utbetalingsberegning)) {
-                return sakskompleks.setTilstand(sykepengehistorikkHendelse, TilInfotrygdTilstand)
-            }
-
-            sakskompleks.setTilstand(sykepengehistorikkHendelse, SykepengehistorikkMottattTilstand) {
-                sakskompleks.maksdato = utbetalingsberegning.maksdato
-                sakskompleks.utbetalingslinjer = utbetalingsberegning.utbetalingslinjer
-            }
+            sakskompleks.beregnUtbetalingOgSettTilstand(sykepengehistorikkHendelse, SykepengehistorikkMottattTilstand)
         }
 
-        private fun Sakskompleks.helePeriodenSkalBetalesAvArbeidsgiver(utbetalingsberegning: Utbetalingsberegning): Boolean {
-            val inntektsmelding = this.inntektsmeldingHendelse() ?: return false
-            val sisteUtbetalingsdag = utbetalingsberegning.utbetalingslinjer.lastOrNull()?.tom ?: return true
-
-            val opphørsdato = inntektsmelding.refusjon().opphoersdato
-            if (opphørsdato != null && opphørsdato <= sisteUtbetalingsdag) {
-                return false
-            }
-
-            return inntektsmelding.endringIRefusjoner().all { it > sisteUtbetalingsdag }
+        override fun håndterVilkårsprøving(sakskompleks: Sakskompleks, vilkårsprøvingHendelse: VilkårsprøvingHendelse) {
+            sakskompleks.setTilstand(vilkårsprøvingHendelse, VilkårsprøvingMottattTilstand)
         }
     }
 
@@ -283,6 +292,17 @@ class Sakskompleks(
 
         override fun håndterVilkårsprøving(sakskompleks: Sakskompleks, vilkårsprøvingHendelse: VilkårsprøvingHendelse) {
             sakskompleks.setTilstand(vilkårsprøvingHendelse, TilGodkjenningTilstand)
+        }
+    }
+
+    private object VilkårsprøvingMottattTilstand : Sakskomplekstilstand {
+        override val type = VILKÅRSPRØVING_MOTTATT
+
+        override fun håndterSykepengehistorikk(
+            sakskompleks: Sakskompleks,
+            sykepengehistorikkHendelse: SykepengehistorikkHendelse
+        ) {
+            sakskompleks.beregnUtbetalingOgSettTilstand(sykepengehistorikkHendelse, TilGodkjenningTilstand)
         }
     }
 
@@ -386,10 +406,11 @@ class Sakskompleks(
             SENDT_SØKNAD_MOTTATT -> SendtSøknadMottattTilstand
             INNTEKTSMELDING_MOTTATT -> InntektsmeldingMottattTilstand
             KOMPLETT_SYKDOMSTIDSLINJE -> KomplettSykdomstidslinjeTilstand
+            SYKEPENGEHISTORIKK_MOTTATT -> SykepengehistorikkMottattTilstand
+            VILKÅRSPRØVING_MOTTATT -> VilkårsprøvingMottattTilstand
             TIL_GODKJENNING -> TilGodkjenningTilstand
             TIL_UTBETALING -> TilUtbetalingTilstand
             TIL_INFOTRYGD -> TilInfotrygdTilstand
-            SYKEPENGEHISTORIKK_MOTTATT -> SykepengehistorikkMottattTilstand
         }
 
         private val objectMapper = jacksonObjectMapper()
